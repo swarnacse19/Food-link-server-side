@@ -1,7 +1,8 @@
 const express = require("express");
 const cors = require("cors");
 const dotenv = require("dotenv");
-const { MongoClient, ServerApiVersion } = require("mongodb");
+const admin = require("firebase-admin");
+const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 dotenv.config();
 
 const app = express();
@@ -9,6 +10,12 @@ const port = process.env.PORT || 5000;
 
 app.use(cors());
 app.use(express.json());
+
+const serviceAccount = require("./food-donation-sdk.json");
+
+admin.initializeApp({
+  credential: admin.credential.cert(serviceAccount),
+});
 
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.saov0by.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0`;
 
@@ -69,6 +76,28 @@ async function run() {
       const user = req.body;
       const result = await usersCollection.insertOne(user);
       res.send(result);
+    });
+
+    app.delete("/users/:id", async (req, res) => {
+      const id = req.params.id;
+      console.log(id);
+
+      const user = await usersCollection.findOne({ _id: new ObjectId(id) });
+      if (!user) return res.status(404).send("User not found");
+
+      try {
+        if (user.firebaseUid) {
+          await admin.auth().deleteUser(user.firebaseUid);
+        }
+
+        await usersCollection.deleteOne({ _id: new ObjectId(id) });
+
+        res.send({ message: "User deleted from Firebase and MongoDB" });
+      } catch (error) {
+        res
+          .status(500)
+          .send({ error: "Failed to delete user", details: error });
+      }
     });
 
     await client.db("admin").command({ ping: 1 });
