@@ -34,7 +34,49 @@ async function run() {
     const db = client.db("FoodLinkDB");
     const usersCollection = db.collection("users");
 
-    app.get("/users/:email/role", async (req, res) => {
+    const verifyFBToken = async (req, res, next) => {
+      const authHeader = req.headers.authorization;
+      if (!authHeader) {
+        return res.status(401).send({ message: "unauthorized access" });
+      }
+      const token = authHeader.split(" ")[1];
+      //console.log("token in the middleware", token);
+      if (!token) {
+        return res.status(401).send({ message: "unauthorized access" });
+      }
+
+      // verify the token
+      try {
+        const decoded = await admin.auth().verifyIdToken(token);
+        req.decoded = decoded;
+        next();
+      } catch (error) {
+        return res.status(403).send({ message: "forbidden access" });
+      }
+    };
+
+    const verifyAdmin = async (req, res, next) => {
+      const email = req.decoded.email;
+      const query = { email };
+      const user = await usersCollection.findOne(query);
+      if (!user || user.role !== "admin") {
+        return res.status(403).send({ message: "forbidden access" });
+      }
+      next();
+    };
+
+    const verifyEmailMatch = (req, res, next) => {
+      const tokenEmail = req.decoded?.email;
+      const paramEmail = req.params.email;
+
+      if (!tokenEmail || tokenEmail !== paramEmail) {
+        return res.status(403).send({ message: "Forbidden: Email mismatch" });
+      }
+
+      next();
+    };
+
+    app.get("/users/:email/role", verifyFBToken, verifyEmailMatch, async (req, res) => {
       try {
         const email = req.params.email;
 
@@ -78,7 +120,7 @@ async function run() {
       res.send(result);
     });
 
-    app.delete("/users/:id", async (req, res) => {
+    app.delete("/users/:id", verifyFBToken, verifyAdmin, async (req, res) => {
       const id = req.params.id;
       console.log(id);
 
