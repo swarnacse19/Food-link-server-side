@@ -152,6 +152,32 @@ async function run() {
       }
     });
 
+    app.get("/donations/all", verifyFBToken, verifyAdmin, async (req, res) => {
+      try {
+        const donations = await donationsCollection.find().toArray();
+        res.send(donations);
+      } catch (err) {
+        console.error("Error fetching all donations:", err);
+        res.status(500).send({ message: "Failed to fetch all donations" });
+      }
+    });
+
+    app.patch("/donations/:id/status", verifyFBToken, verifyAdmin, async (req, res) => {
+      const { id } = req.params;
+      const { status } = req.body;
+
+      try {
+        const result = await donationsCollection.updateOne(
+          { _id: new ObjectId(id) },
+          { $set: { status } }
+        );
+        res.send(result);
+      } catch (err) {
+        console.error("Error updating donation status:", err);
+        res.status(500).send({ message: "Failed to update status" });
+      }
+    });
+
     app.patch(
       "/donations/:id",
       verifyFBToken,
@@ -240,14 +266,19 @@ async function run() {
       }
     });
 
-    app.delete("/donations/:id", verifyFBToken, verifyRestaurant, async (req, res) => {
-      const id = req.params.id;
+    app.delete(
+      "/donations/:id",
+      verifyFBToken,
+      verifyRestaurant,
+      async (req, res) => {
+        const id = req.params.id;
 
-      const result = await donationsCollection.deleteOne({
-        _id: new ObjectId(id),
-      });
-      res.send(result); // will include deletedCount
-    });
+        const result = await donationsCollection.deleteOne({
+          _id: new ObjectId(id),
+        });
+        res.send(result); // will include deletedCount
+      }
+    );
 
     await client.db("admin").command({ ping: 1 });
     console.log(
