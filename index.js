@@ -5,6 +5,8 @@ const admin = require("firebase-admin");
 const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 dotenv.config();
 
+const stripe = require("stripe")(process.env.PAYMENT_GATEWAY_KEY);
+
 const app = express();
 const port = process.env.PORT || 5000;
 
@@ -34,6 +36,8 @@ async function run() {
     const db = client.db("FoodLinkDB");
     const usersCollection = db.collection("users");
     const donationsCollection = db.collection("donations");
+    const paymentsCollection = db.collection("payments");
+    const charityRoleRequestsCollection = db.collection("charityRequest");
 
     const verifyFBToken = async (req, res, next) => {
       const authHeader = req.headers.authorization;
@@ -175,6 +179,18 @@ async function run() {
       }
     });
 
+    app.get("/donations/featured", async (req, res) => {
+      try {
+        const featured = await donationsCollection
+          .find({ status: "Verified", featured: true })
+          .toArray();
+        res.send(featured);
+      } catch (err) {
+        console.error("Error fetching featured donations:", err);
+        res.status(500).send({ message: "Failed to fetch featured donations" });
+      }
+    });
+
     app.patch("/donations/:id/feature", verifyFBToken, async (req, res) => {
       const { id } = req.params;
 
@@ -275,6 +291,85 @@ async function run() {
       const user = req.body;
       const result = await usersCollection.insertOne(user);
       res.send(result);
+    });
+
+    app.get("/charity-role-request/:email", verifyFBToken, async (req, res) => {
+      const email = req.params.email;
+      const request = await charityRoleRequestsCollection.findOne(
+        { email },
+        { projection: { status: 1 } }
+      );
+      res.send(request || {});
+    });
+
+    app.post("/charity-role-request", verifyFBToken, async (req, res) => {
+      const {
+        email,
+        name,
+        organization,
+        mission,
+        amount,
+        transactionId,
+        paymentMethod,
+      } = req.body;
+
+      // Step 1: Check if already exists
+      const existing = await charityRoleRequestsCollection.findOne({
+        email,
+        status: { $in: ["Pending", "Approved"] },
+      });
+
+      if (existing) {
+        return res
+          .status(400)
+          .send({ message: "You already submitted a request." });
+      }
+
+      // Step 2: Insert Charity Role Request
+      const roleDoc = {
+        email,
+        name,
+        organization,
+        mission,
+        transactionId,
+        status: "Pending",
+        createdAt: new Date(),
+      };
+
+      const roleResult = await charityRoleRequestsCollection.insertOne(roleDoc);
+
+      // Step 3: Save to Transactions
+      const paymentDoc = {
+        email,
+        transactionId,
+        amount,
+        paymentMethod,
+        purpose: "Charity Role Request",
+        paid_at: new Date(),
+      };
+
+      await paymentsCollection.insertOne(paymentDoc);
+
+      res
+        .status(201)
+        .send({
+          message: "Role request submitted",
+          insertedId: roleResult.insertedId,
+        });
+    });
+
+    app.post("/create-payment-intent", async (req, res) => {
+      const { amountInCents } = req.body;
+      try {
+        const paymentIntent = await stripe.paymentIntents.create({
+          amount: amountInCents,
+          currency: "usd",
+          payment_method_types: ["card"],
+        });
+        res.send({ clientSecret: paymentIntent.client_secret });
+      } catch (err) {
+        res.status(500).send({ error: err.message });
+      }
     });
 
     app.delete("/users/:id", verifyFBToken, verifyAdmin, async (req, res) => {
