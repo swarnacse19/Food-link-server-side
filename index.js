@@ -152,17 +152,22 @@ async function run() {
       }
     });
 
-    app.patch("/donations/:id", verifyFBToken, verifyRestaurant, async (req, res) => {
-      const id = req.params.id;
-      const updated = req.body;
+    app.patch(
+      "/donations/:id",
+      verifyFBToken,
+      verifyRestaurant,
+      async (req, res) => {
+        const id = req.params.id;
+        const updated = req.body;
 
-      const result = await donationsCollection.updateOne(
-        { _id: new ObjectId(id) },
-        { $set: updated }
-      );
+        const result = await donationsCollection.updateOne(
+          { _id: new ObjectId(id) },
+          { $set: updated }
+        );
 
-      res.send(result); 
-    });
+        res.send(result);
+      }
+    );
 
     app.patch(
       "/users/:id/role",
@@ -233,6 +238,15 @@ async function run() {
           .status(500)
           .send({ error: "Failed to delete user", details: error });
       }
+    });
+
+    app.delete("/donations/:id", verifyFBToken, verifyRestaurant, async (req, res) => {
+      const id = req.params.id;
+
+      const result = await donationsCollection.deleteOne({
+        _id: new ObjectId(id),
+      });
+      res.send(result); // will include deletedCount
     });
 
     await client.db("admin").command({ ping: 1 });
