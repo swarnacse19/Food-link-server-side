@@ -88,7 +88,8 @@ async function run() {
 
     const verifyEmailMatch = (req, res, next) => {
       const tokenEmail = req.decoded?.email;
-      const paramEmail = req.params.email;
+      const paramEmail = req.params.email || req.query.email || req.body.email;
+      //console.log('param',paramEmail);
 
       if (!tokenEmail || tokenEmail !== paramEmail) {
         return res.status(403).send({ message: "Forbidden: Email mismatch" });
@@ -133,6 +134,36 @@ async function run() {
       }
     });
 
+    app.get("/donations", verifyFBToken, verifyEmailMatch, async (req, res) => {
+      const userEmail = req.query.email;
+
+      if (!userEmail) {
+        return res.status(400).send({ message: "Email is required" });
+      }
+
+      try {
+        const donations = await donationsCollection
+          .find({ restaurantEmail: userEmail })
+          .toArray();
+        res.send(donations);
+      } catch (err) {
+        console.error("Error fetching donations:", err);
+        res.status(500).send({ message: "Failed to fetch donations" });
+      }
+    });
+
+    app.patch("/donations/:id", verifyFBToken, verifyRestaurant, async (req, res) => {
+      const id = req.params.id;
+      const updated = req.body;
+
+      const result = await donationsCollection.updateOne(
+        { _id: new ObjectId(id) },
+        { $set: updated }
+      );
+
+      res.send(result); 
+    });
+
     app.patch(
       "/users/:id/role",
       verifyFBToken,
@@ -158,11 +189,16 @@ async function run() {
       }
     );
 
-    app.post("/donations", verifyFBToken, verifyRestaurant, async (req, res) => {
-      const newDonation = req.body;
-      const result = await donationsCollection.insertOne(newDonation);
-      res.send(result);
-    });
+    app.post(
+      "/donations",
+      verifyFBToken,
+      verifyRestaurant,
+      async (req, res) => {
+        const newDonation = req.body;
+        const result = await donationsCollection.insertOne(newDonation);
+        res.send(result);
+      }
+    );
 
     app.post("/users", async (req, res) => {
       const email = req.body.email;
