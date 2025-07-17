@@ -162,21 +162,54 @@ async function run() {
       }
     });
 
-    app.patch("/donations/:id/status", verifyFBToken, verifyAdmin, async (req, res) => {
+    app.get("/donations/verified", async (req, res) => {
+      try {
+        const verifiedDonations = await donationsCollection
+          .find({ status: "Verified" })
+          .toArray();
+
+        res.send(verifiedDonations);
+      } catch (err) {
+        console.error("Error fetching verified donations:", err);
+        res.status(500).send({ message: "Failed to fetch verified donations" });
+      }
+    });
+
+    app.patch("/donations/:id/feature", verifyFBToken, async (req, res) => {
       const { id } = req.params;
-      const { status } = req.body;
 
       try {
         const result = await donationsCollection.updateOne(
           { _id: new ObjectId(id) },
-          { $set: { status } }
+          { $set: { featured: true } }
         );
         res.send(result);
       } catch (err) {
-        console.error("Error updating donation status:", err);
-        res.status(500).send({ message: "Failed to update status" });
+        console.error("Error featuring donation:", err);
+        res.status(500).send({ message: "Failed to feature donation" });
       }
     });
+
+    app.patch(
+      "/donations/:id/status",
+      verifyFBToken,
+      verifyAdmin,
+      async (req, res) => {
+        const { id } = req.params;
+        const { status } = req.body;
+
+        try {
+          const result = await donationsCollection.updateOne(
+            { _id: new ObjectId(id) },
+            { $set: { status } }
+          );
+          res.send(result);
+        } catch (err) {
+          console.error("Error updating donation status:", err);
+          res.status(500).send({ message: "Failed to update status" });
+        }
+      }
+    );
 
     app.patch(
       "/donations/:id",
