@@ -33,6 +33,7 @@ async function run() {
 
     const db = client.db("FoodLinkDB");
     const usersCollection = db.collection("users");
+    const donationsCollection = db.collection("donations");
 
     const verifyFBToken = async (req, res, next) => {
       const authHeader = req.headers.authorization;
@@ -65,6 +66,26 @@ async function run() {
       next();
     };
 
+    const verifyCharity = async (req, res, next) => {
+      const email = req.decoded.email;
+      const query = { email };
+      const user = await usersCollection.findOne(query);
+      if (!user || user.role !== "charity") {
+        return res.status(403).send({ message: "Forbidden: Charity only" });
+      }
+      next();
+    };
+
+    const verifyRestaurant = async (req, res, next) => {
+      const email = req.decoded.email;
+      const query = { email };
+      const user = await usersCollection.findOne(query);
+      if (!user || user.role !== "restaurant") {
+        return res.status(403).send({ message: "Forbidden: Restaurant only" });
+      }
+      next();
+    };
+
     const verifyEmailMatch = (req, res, next) => {
       const tokenEmail = req.decoded?.email;
       const paramEmail = req.params.email;
@@ -76,26 +97,31 @@ async function run() {
       next();
     };
 
-    app.get("/users/:email/role", verifyFBToken, verifyEmailMatch, async (req, res) => {
-      try {
-        const email = req.params.email;
+    app.get(
+      "/users/:email/role",
+      verifyFBToken,
+      verifyEmailMatch,
+      async (req, res) => {
+        try {
+          const email = req.params.email;
 
-        if (!email) {
-          return res.status(400).send({ message: "Email is required" });
+          if (!email) {
+            return res.status(400).send({ message: "Email is required" });
+          }
+
+          const user = await usersCollection.findOne({ email });
+
+          if (!user) {
+            return res.status(404).send({ message: "User not found" });
+          }
+
+          res.send({ role: user.role || "user" });
+        } catch (error) {
+          console.error("Error getting user role:", error);
+          res.status(500).send({ message: "Failed to get role" });
         }
-
-        const user = await usersCollection.findOne({ email });
-
-        if (!user) {
-          return res.status(404).send({ message: "User not found" });
-        }
-
-        res.send({ role: user.role || "user" });
-      } catch (error) {
-        console.error("Error getting user role:", error);
-        res.status(500).send({ message: "Failed to get role" });
       }
-    });
+    );
 
     app.get("/users", async (req, res) => {
       try {
@@ -131,6 +157,12 @@ async function run() {
         }
       }
     );
+
+    app.post("/donations", verifyFBToken, verifyRestaurant, async (req, res) => {
+      const newDonation = req.body;
+      const result = await donationsCollection.insertOne(newDonation);
+      res.send(result);
+    });
 
     app.post("/users", async (req, res) => {
       const email = req.body.email;
