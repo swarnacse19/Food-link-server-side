@@ -40,6 +40,7 @@ async function run() {
     const charityRoleRequestsCollection = db.collection("charityRequest");
     const reviewsCollection = db.collection("reviews");
     const donationRequestsCollection = db.collection("donationRequests");
+    const favoritesCollection = db.collection("favorites");
 
     const verifyFBToken = async (req, res, next) => {
       const authHeader = req.headers.authorization;
@@ -247,6 +248,28 @@ async function run() {
       }
     });
 
+    app.get(
+      "/donation-requests/:donationId",
+      verifyFBToken,
+      verifyCharity,
+      async (req, res) => {
+        const { donationId } = req.params;
+        const userEmail = req.query.email;
+
+        try {
+          const request = await donationRequestsCollection.findOne({
+            donationId: donationId, // string match
+            charityEmail: userEmail, // email match
+          });
+
+          res.send(request || {});
+        } catch (err) {
+          console.error("Error fetching charity's request:", err);
+          res.status(500).send({ message: "Failed to fetch request" });
+        }
+      }
+    );
+
     app.patch("/donations/:id/feature", verifyFBToken, async (req, res) => {
       const { id } = req.params;
 
@@ -378,6 +401,67 @@ async function run() {
       }
     );
 
+    app.patch(
+      "/donation-requests/:donationId",
+      verifyFBToken,
+      verifyCharity,
+      async (req, res) => {
+        const { donationId } = req.params;
+        const { status } = req.body;
+
+        try {
+          const result = await donationRequestsCollection.updateOne(
+            { donationId },
+            { $set: { status } }
+          );
+
+          // If picked up, update donation status as well
+          if (status === "Picked Up") {
+            await donationsCollection.updateOne(
+              { _id: new ObjectId(donationId) },
+              { $set: { dStatus: "Picked Up" } }
+            );
+          }
+
+          res.send({
+            message: "Request updated",
+            modified: result.modifiedCount > 0,
+          });
+        } catch (err) {
+          console.error("Error updating request status:", err);
+          res.status(500).send({ message: "Failed to update status" });
+        }
+      }
+    );
+
+    app.post("/favorites", verifyFBToken, async (req, res) => {
+      const { email, donationId } = req.body;
+
+      try {
+        // Optional: check for duplicates
+        const existing = await favoritesCollection.findOne({
+          email,
+          donationId,
+        });
+        if (existing) {
+          return res.status(400).send({ message: "Already in favorites" });
+        }
+
+        const result = await favoritesCollection.insertOne({
+          ...req.body,
+          createdAt: new Date(),
+        });
+
+        res.status(201).send({
+          message: "Added to favorites",
+          insertedId: result.insertedId,
+        });
+      } catch (err) {
+        console.error("Error adding to favorites:", err);
+        res.status(500).send({ message: "Failed to add favorite" });
+      }
+    });
+
     app.post(
       "/donations",
       verifyFBToken,
@@ -418,7 +502,8 @@ async function run() {
 
     app.get(
       "/donation-requests/:donationId",
-      verifyFBToken, verifyCharity,
+      verifyFBToken,
+      verifyCharity,
       async (req, res) => {
         const { donationId } = req.params;
         const userEmail = req.query.email;
@@ -487,6 +572,38 @@ async function run() {
         { projection: { status: 1 } }
       );
       res.send(request || {});
+    });
+
+    app.get("/favorites", verifyFBToken, async (req, res) => {
+      const email = req.query.email;
+      if (!email) return res.status(400).send({ message: "Email is required" });
+
+      try {
+        const favorites = await favoritesCollection.find({ email }).toArray();
+
+        const donationIds = favorites.map(
+          (fav) => new ObjectId(fav.donationId)
+        );
+        const donations = await donationsCollection
+          .find({ _id: { $in: donationIds } })
+          .toArray();
+
+        // Attach favorite _id for deletion
+        const result = donations.map((donation) => {
+          const fav = favorites.find(
+            (f) => f.donationId === donation._id.toString()
+          );
+          return {
+            ...donation,
+            favoriteId: fav?._id?.toString(),
+          };
+        });
+
+        res.send(result);
+      } catch (err) {
+        console.error("Failed to get favorites", err);
+        res.status(500).send({ message: "Failed to fetch favorites" });
+      }
     });
 
     app.post("/charity-role-request", verifyFBToken, async (req, res) => {
@@ -576,6 +693,25 @@ async function run() {
         res
           .status(500)
           .send({ error: "Failed to delete user", details: error });
+      }
+    });
+
+    app.delete("/favorites/:id", verifyFBToken, async (req, res) => {
+      const { id } = req.params;
+
+      try {
+        const result = await favoritesCollection.deleteOne({
+          _id: new ObjectId(id),
+        });
+
+        if (result.deletedCount === 0) {
+          return res.status(404).send({ message: "Favorite not found" });
+        }
+
+        res.send({ message: "Favorite removed" });
+      } catch (err) {
+        console.error("Error removing favorite:", err);
+        res.status(500).send({ message: "Failed to remove favorite" });
       }
     });
 
