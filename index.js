@@ -434,6 +434,72 @@ async function run() {
       }
     );
 
+    app.patch(
+      "/donation-requests/accept/:id",
+      verifyFBToken,
+      async (req, res) => {
+        const { id } = req.params;
+
+        try {
+          const acceptedRequest = await donationRequestsCollection.findOne({
+            _id: new ObjectId(id),
+          });
+
+          if (!acceptedRequest) {
+            return res.status(404).send({ message: "Request not found" });
+          }
+
+          const donationId = acceptedRequest.donationId;
+
+          // 1. Accept the selected request
+          await donationRequestsCollection.updateOne(
+            { _id: new ObjectId(id) },
+            { $set: { status: "Accepted" } }
+          );
+
+          // 2. Reject all other requests for the same donation
+          await donationRequestsCollection.updateMany(
+            { donationId, _id: { $ne: new ObjectId(id) } },
+            { $set: { status: "Rejected" } }
+          );
+
+          // 3. Update the donation status and set charity name
+          await donationsCollection.updateOne(
+            { _id: new ObjectId(donationId) },
+            {
+              $set: {
+                dStatus: "Assigned",
+                charityName: acceptedRequest.charityName,
+              },
+            }
+          );
+
+          res.send({ success: true });
+        } catch (error) {
+          console.error("Error accepting request:", error);
+          res.status(500).send({ message: "Failed to accept request" });
+        }
+      }
+    );
+
+    app.patch(
+      "/donation-requests/reject/:id",
+      verifyFBToken,
+      async (req, res) => {
+        const { id } = req.params;
+        try {
+          const result = await donationRequestsCollection.updateOne(
+            { _id: new ObjectId(id) },
+            { $set: { status: "Rejected" } }
+          );
+          res.send(result);
+        } catch (error) {
+          console.error("Failed to reject request:", error);
+          res.status(500).send({ message: "Failed to reject request" });
+        }
+      }
+    );
+
     app.post("/favorites", verifyFBToken, async (req, res) => {
       const { email, donationId } = req.body;
 
@@ -677,6 +743,23 @@ async function run() {
         res.status(500).send({ message: "Internal server error" });
       }
     });
+
+    app.get(
+      "/restaurant-donation-requests",
+      verifyFBToken,
+      async (req, res) => {
+        const restaurantName = req.query.restaurantName;
+        try {
+          const requests = await donationRequestsCollection
+            .find({ restaurantName })
+            .toArray();
+          res.send(requests);
+        } catch (error) {
+          console.error("Error fetching restaurant requests:", error);
+          res.status(500).send({ message: "Internal server error" });
+        }
+      }
+    );
 
     app.post("/charity-role-request", verifyFBToken, async (req, res) => {
       const {
