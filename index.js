@@ -407,16 +407,16 @@ async function run() {
       verifyCharity,
       async (req, res) => {
         const { donationId } = req.params;
-        const { status } = req.body;
+        const { status, charityEmail } = req.body;
 
         try {
+          // Match donationId and charityEmail
           const result = await donationRequestsCollection.updateOne(
-            { donationId },
+            { donationId, charityEmail },
             { $set: { status } }
           );
 
-          // If picked up, update donation status as well
-          if (status === "Picked Up") {
+          if (status === "Picked Up" && result.modifiedCount > 0) {
             await donationsCollection.updateOne(
               { _id: new ObjectId(donationId) },
               { $set: { dStatus: "Picked Up" } }
