@@ -629,31 +629,30 @@ async function run() {
       }
     );
 
-    app.delete(
-      "/donation-requests/:id",
-      verifyFBToken,
-      async (req, res) => {
-        const id = req.params.id;
-        try {
-          const request = await donationRequestsCollection.findOne({
-            _id: new ObjectId(id),
-          });
+    app.delete("/donation-requests/:id", verifyFBToken, async (req, res) => {
+  const id = req.params.id;
+  try {
+    const request = await donationRequestsCollection.findOne({
+      _id: new ObjectId(id),
+    });
 
-          if (request.status !== "Pending") {
-            return res
-              .status(400)
-              .send({ message: "Only pending requests can be canceled" });
-          }
+    if (request?.status !== "Pending") {
+      return res
+        .status(400)
+        .send({ message: "Only pending requests can be canceled" });
+    }
 
-          const result = await donationRequestsCollection.deleteOne({
-            _id: new ObjectId(id),
-          });
-          res.send(result);
-        } catch (error) {
-          res.status(500).send({ message: "Failed to delete request" });
-        }
-      }
-    );
+    const result = await donationRequestsCollection.deleteOne({
+      _id: new ObjectId(id),
+    });
+
+    res.send(result);
+  } catch (error) {
+    console.error("Failed to delete request:", error);
+    res.status(500).send({ message: "Failed to delete request" });
+  }
+});
+
 
     app.get(
       "/donation-requests/:donationId",
@@ -908,18 +907,6 @@ async function run() {
       }
     });
 
-    app.delete("/donation-requests/:id", verifyFBToken, async (req, res) => {
-      const { id } = req.params;
-      try {
-        const result = await donationRequestsCollection.deleteOne({
-          _id: new ObjectId(id),
-        });
-        res.send(result);
-      } catch (error) {
-        console.error("Failed to delete request:", error);
-        res.status(500).send({ message: "Failed to delete request" });
-      }
-    });
 
     app.delete("/reviews/:id", verifyFBToken, async (req, res) => {
       const { id } = req.params;
