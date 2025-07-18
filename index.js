@@ -648,6 +648,36 @@ async function run() {
       }
     });
 
+    app.get("/latest-charity-requests", async (req, res) => {
+      try {
+        const requests = await donationRequestsCollection
+          .find({})
+          .sort({ createdAt: -1 })
+          .limit(3)
+          .toArray();
+
+        const emails = requests.map((r) => r.charityEmail);
+        const users = await usersCollection
+          .find({ email: { $in: emails } })
+          .project({ email: 1, name: 1, photo: 1 })
+          .toArray();
+
+        const enrichedRequests = requests.map((req) => {
+          const user = users.find((u) => u.email === req.charityEmail);
+          return {
+            ...req,
+            charityName: user?.name || req.charityName,
+            charityImage: user?.photo || null,
+          };
+        });
+
+        res.send(enrichedRequests);
+      } catch (err) {
+        console.error("Failed to fetch latest charity requests", err);
+        res.status(500).send({ message: "Internal server error" });
+      }
+    });
+
     app.post("/charity-role-request", verifyFBToken, async (req, res) => {
       const {
         email,
