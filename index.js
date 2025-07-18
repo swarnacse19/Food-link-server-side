@@ -38,6 +38,7 @@ async function run() {
     const donationsCollection = db.collection("donations");
     const paymentsCollection = db.collection("payments");
     const charityRoleRequestsCollection = db.collection("charityRequest");
+    const reviewsCollection = db.collection("reviews");
 
     const verifyFBToken = async (req, res, next) => {
       const authHeader = req.headers.authorization;
@@ -386,6 +387,33 @@ async function run() {
         res.send(result);
       }
     );
+
+    app.post("/reviews", async (req, res) => {
+      const review = req.body;
+      review.createdAt = new Date();
+
+      try {
+        const result = await reviewsCollection.insertOne(review);
+        res.send(result);
+      } catch (error) {
+        console.error("Failed to post review:", error);
+        res.status(500).send({ message: "Server Error" });
+      }
+    });
+
+    app.get("/reviews/:donationId", async (req, res) => {
+      const { donationId } = req.params;
+      try {
+        const reviews = await reviewsCollection
+          .find({ donationId })
+          .sort({ createdAt: -1 })
+          .toArray();
+        res.send(reviews);
+      } catch (error) {
+        console.error("Failed to get reviews:", error);
+        res.status(500).send({ message: "Server Error" });
+      }
+    });
 
     app.post("/users", async (req, res) => {
       const email = req.body.email;
