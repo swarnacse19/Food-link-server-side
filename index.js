@@ -638,6 +638,16 @@ async function run() {
       }
     });
 
+    app.get("/donation-requests", verifyFBToken, async (req, res) => {
+      try {
+        const requests = await donationRequestsCollection.find().toArray();
+        res.send(requests);
+      } catch (error) {
+        console.error("Failed to get donation requests:", error);
+        res.status(500).send({ message: "Failed to get donation requests" });
+      }
+    });
+
     app.post("/charity-role-request", verifyFBToken, async (req, res) => {
       const {
         email,
@@ -725,6 +735,19 @@ async function run() {
         res
           .status(500)
           .send({ error: "Failed to delete user", details: error });
+      }
+    });
+
+    app.delete("/donation-requests/:id", verifyFBToken, async (req, res) => {
+      const { id } = req.params;
+      try {
+        const result = await donationRequestsCollection.deleteOne({
+          _id: new ObjectId(id),
+        });
+        res.send(result);
+      } catch (error) {
+        console.error("Failed to delete request:", error);
+        res.status(500).send({ message: "Failed to delete request" });
       }
     });
 
