@@ -208,16 +208,27 @@ async function run() {
     );
 
     app.get("/donations/verified", async (req, res) => {
-      try {
-        const verifiedDonations = await donationsCollection
-          .find({ status: "Verified" })
-          .toArray();
+      const { location, sort } = req.query;
 
-        res.send(verifiedDonations);
-      } catch (err) {
-        console.error("Error fetching verified donations:", err);
-        res.status(500).send({ message: "Failed to fetch verified donations" });
+      const query = { status: "Verified" };
+
+      // If location search was submitted
+      if (location) {
+        query.location = { $regex: new RegExp(location, "i") }; // case-insensitive match
       }
+
+      // Base query
+      let cursor = donationsCollection.find(query);
+
+      // Apply sorting
+      if (sort === "quantity") {
+        cursor = cursor.sort({ quantity: 1 }); // ascending
+      } else if (sort === "pickupTime") {
+        cursor = cursor.sort({ "pickupWindow.start": 1 });
+      }
+
+      const result = await cursor.toArray();
+      res.send(result);
     });
 
     app.get("/donations/featured", async (req, res) => {
