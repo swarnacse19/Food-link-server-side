@@ -39,6 +39,7 @@ async function run() {
     const paymentsCollection = db.collection("payments");
     const charityRoleRequestsCollection = db.collection("charityRequest");
     const reviewsCollection = db.collection("reviews");
+    const donationRequestsCollection = db.collection("donationRequests");
 
     const verifyFBToken = async (req, res, next) => {
       const authHeader = req.headers.authorization;
@@ -415,6 +416,27 @@ async function run() {
       }
     });
 
+    app.get(
+      "/donation-requests/:donationId",
+      verifyFBToken, verifyCharity,
+      async (req, res) => {
+        const { donationId } = req.params;
+        const userEmail = req.query.email;
+
+        try {
+          const request = await donationRequestsCollection.findOne({
+            donationId,
+            assignedTo: userEmail,
+          });
+
+          res.send(request || {});
+        } catch (err) {
+          console.error("Error fetching assigned request:", err);
+          res.status(500).send({ message: "Failed to fetch assigned request" });
+        }
+      }
+    );
+
     app.post("/users", async (req, res) => {
       const email = req.body.email;
       const userExists = await usersCollection.findOne({ email });
@@ -427,6 +449,36 @@ async function run() {
       const result = await usersCollection.insertOne(user);
       res.send(result);
     });
+
+    app.post(
+      "/donation-requests",
+      verifyFBToken,
+      verifyCharity,
+      async (req, res) => {
+        const request = req.body;
+
+        try {
+          const result = await donationRequestsCollection.insertOne({
+            ...request,
+            createdAt: new Date(),
+          });
+
+          // Update donation status to 'Requested'
+          await donationsCollection.updateOne(
+            { _id: new ObjectId(request.donationId) },
+            { $set: { dStatus: "Requested" } }
+          );
+
+          res.status(201).send({
+            message: "Donation request submitted",
+            insertedId: result.insertedId,
+          });
+        } catch (error) {
+          console.error("Error submitting request:", error);
+          res.status(500).send({ message: "Failed to submit request" });
+        }
+      }
+    );
 
     app.get("/charity-role-request/:email", verifyFBToken, async (req, res) => {
       const email = req.params.email;
