@@ -102,6 +102,33 @@ async function run() {
       next();
     };
 
+    app.get("/charity-transactions/:email", verifyFBToken, async (req, res) => {
+      const email = req.params.email;
+
+      const payments = await paymentsCollection
+        .find({ email })
+        .sort({ date: -1 })
+        .project({
+          transactionId: 1,
+          amount: 1,
+          paid_at: 1,
+          _id: 0,
+        })
+        .toArray();
+
+      // 2. Status from charityRoleRequestsCollection
+      const request = await charityRoleRequestsCollection.findOne(
+        { email },
+        { projection: { status: 1 } }
+      );
+
+      // Final response combines both
+      res.send({
+        transactions: payments,
+        status: request?.status || "Pending",
+      });
+    });
+
     app.get(
       "/users/:email/role",
       verifyFBToken,
@@ -166,6 +193,17 @@ async function run() {
       }
     });
 
+    // GET /charity-role-requests
+    app.get(
+      "/charity-role-requests",
+      verifyFBToken,
+      verifyAdmin,
+      async (req, res) => {
+        const requests = await charityRoleRequestsCollection.find().toArray();
+        res.send(requests);
+      }
+    );
+
     app.get("/donations/verified", async (req, res) => {
       try {
         const verifiedDonations = await donationsCollection
@@ -204,6 +242,56 @@ async function run() {
         console.error("Error featuring donation:", err);
         res.status(500).send({ message: "Failed to feature donation" });
       }
+    });
+
+    // PATCH /charity-role-request/:id
+    app.patch("/charity-role-request/:id", verifyFBToken, verifyAdmin, async (req, res) => {
+      const id = req.params.id;
+      const { status } = req.body;
+
+      if (!["Approved", "Rejected"].includes(status)) {
+        return res.status(400).send({ message: "Invalid status value" });
+      }
+
+      const filter = { _id: new ObjectId(id) };
+
+      // First, find the existing charity role request to get email
+      const existingRequest = await charityRoleRequestsCollection.findOne(
+        filter
+      );
+      if (!existingRequest) {
+        return res.status(404).send({ message: "Charity request not found" });
+      }
+
+      const email = existingRequest.email;
+
+      const updateRequest = {
+        $set: { status },
+      };
+
+      const requestUpdateResult = await charityRoleRequestsCollection.updateOne(
+        filter,
+        updateRequest
+      );
+
+      let userUpdateResult = null;
+
+      // If approved, update user's role to 'charity'
+      if (status === "Approved" && email) {
+        const userFilter = { email };
+        const updateUserRole = {
+          $set: { role: "charity" },
+        };
+        userUpdateResult = await usersCollection.updateOne(
+          userFilter,
+          updateUserRole
+        );
+      }
+
+      res.send({
+        requestModified: requestUpdateResult.modifiedCount > 0,
+        userModified: userUpdateResult?.modifiedCount > 0 || false,
+      });
     });
 
     app.patch(
@@ -350,12 +438,10 @@ async function run() {
 
       await paymentsCollection.insertOne(paymentDoc);
 
-      res
-        .status(201)
-        .send({
-          message: "Role request submitted",
-          insertedId: roleResult.insertedId,
-        });
+      res.status(201).send({
+        message: "Role request submitted",
+        insertedId: roleResult.insertedId,
+      });
     });
 
     app.post("/create-payment-intent", async (req, res) => {
