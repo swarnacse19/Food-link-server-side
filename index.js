@@ -229,6 +229,22 @@ async function run() {
       }
     });
 
+    app.get("/donations/:id", async (req, res) => {
+      const id = req.params.id;
+
+      try {
+        const donation = await donationsCollection.findOne({
+          _id: new ObjectId(id),
+        });
+        if (!donation) {
+          return res.status(404).send({ message: "Donation not found" });
+        }
+        res.send(donation);
+      } catch (error) {
+        res.status(500).send({ message: "Server error", error });
+      }
+    });
+
     app.patch("/donations/:id/feature", verifyFBToken, async (req, res) => {
       const { id } = req.params;
 
@@ -245,54 +261,57 @@ async function run() {
     });
 
     // PATCH /charity-role-request/:id
-    app.patch("/charity-role-request/:id", verifyFBToken, verifyAdmin, async (req, res) => {
-      const id = req.params.id;
-      const { status } = req.body;
+    app.patch(
+      "/charity-role-request/:id",
+      verifyFBToken,
+      verifyAdmin,
+      async (req, res) => {
+        const id = req.params.id;
+        const { status } = req.body;
 
-      if (!["Approved", "Rejected"].includes(status)) {
-        return res.status(400).send({ message: "Invalid status value" });
-      }
+        if (!["Approved", "Rejected"].includes(status)) {
+          return res.status(400).send({ message: "Invalid status value" });
+        }
 
-      const filter = { _id: new ObjectId(id) };
+        const filter = { _id: new ObjectId(id) };
 
-      // First, find the existing charity role request to get email
-      const existingRequest = await charityRoleRequestsCollection.findOne(
-        filter
-      );
-      if (!existingRequest) {
-        return res.status(404).send({ message: "Charity request not found" });
-      }
-
-      const email = existingRequest.email;
-
-      const updateRequest = {
-        $set: { status },
-      };
-
-      const requestUpdateResult = await charityRoleRequestsCollection.updateOne(
-        filter,
-        updateRequest
-      );
-
-      let userUpdateResult = null;
-
-      // If approved, update user's role to 'charity'
-      if (status === "Approved" && email) {
-        const userFilter = { email };
-        const updateUserRole = {
-          $set: { role: "charity" },
-        };
-        userUpdateResult = await usersCollection.updateOne(
-          userFilter,
-          updateUserRole
+        // First, find the existing charity role request to get email
+        const existingRequest = await charityRoleRequestsCollection.findOne(
+          filter
         );
-      }
+        if (!existingRequest) {
+          return res.status(404).send({ message: "Charity request not found" });
+        }
 
-      res.send({
-        requestModified: requestUpdateResult.modifiedCount > 0,
-        userModified: userUpdateResult?.modifiedCount > 0 || false,
-      });
-    });
+        const email = existingRequest.email;
+
+        const updateRequest = {
+          $set: { status },
+        };
+
+        const requestUpdateResult =
+          await charityRoleRequestsCollection.updateOne(filter, updateRequest);
+
+        let userUpdateResult = null;
+
+        // If approved, update user's role to 'charity'
+        if (status === "Approved" && email) {
+          const userFilter = { email };
+          const updateUserRole = {
+            $set: { role: "charity" },
+          };
+          userUpdateResult = await usersCollection.updateOne(
+            userFilter,
+            updateUserRole
+          );
+        }
+
+        res.send({
+          requestModified: requestUpdateResult.modifiedCount > 0,
+          userModified: userUpdateResult?.modifiedCount > 0 || false,
+        });
+      }
+    );
 
     app.patch(
       "/donations/:id/status",
