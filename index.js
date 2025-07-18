@@ -632,7 +632,6 @@ async function run() {
     app.delete(
       "/donation-requests/:id",
       verifyFBToken,
-      verifyCharity,
       async (req, res) => {
         const id = req.params.id;
         try {
