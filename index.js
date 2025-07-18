@@ -500,6 +500,38 @@ async function run() {
       }
     });
 
+    app.get("/reviews", verifyFBToken, async (req, res) => {
+      const userEmail = req.query.email;
+
+      try {
+        const reviews = await reviewsCollection
+          .find({ reviewerEmail: userEmail })
+          .sort({ createdAt: -1 })
+          .toArray();
+
+        // Optionally fetch donation titles
+        const donationIds = reviews.map((r) => new ObjectId(r.donationId));
+        const donations = await donationsCollection
+          .find({ _id: { $in: donationIds } })
+          .toArray();
+        const donationMap = {};
+        donations.forEach((d) => {
+          donationMap[d._id.toString()] = d;
+        });
+
+        const enriched = reviews.map((review) => ({
+          ...review,
+          donationTitle: donationMap[review.donationId]?.title || "Unknown",
+          restaurantName:
+            donationMap[review.donationId]?.restaurantName || "Unknown",
+        }));
+
+        res.send(enriched);
+      } catch (err) {
+        res.status(500).send({ message: "Failed to fetch reviews" });
+      }
+    });
+
     app.get(
       "/donation-requests/:donationId",
       verifyFBToken,
@@ -693,6 +725,18 @@ async function run() {
         res
           .status(500)
           .send({ error: "Failed to delete user", details: error });
+      }
+    });
+
+    app.delete("/reviews/:id", verifyFBToken, async (req, res) => {
+      const { id } = req.params;
+      try {
+        const result = await reviewsCollection.deleteOne({
+          _id: new ObjectId(id),
+        });
+        res.send(result);
+      } catch (err) {
+        res.status(500).send({ message: "Failed to delete review" });
       }
     });
 
