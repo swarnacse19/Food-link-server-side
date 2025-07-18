@@ -599,6 +599,50 @@ async function run() {
     });
 
     app.get(
+      "/my-donation-requests",
+      verifyFBToken,
+      verifyCharity,
+      async (req, res) => {
+        const email = req.query.email;
+        try {
+          const requests = await donationRequestsCollection
+            .find({ charityEmail: email })
+            .toArray();
+          res.send(requests);
+        } catch (error) {
+          res.status(500).send({ message: "Failed to fetch requests" });
+        }
+      }
+    );
+
+    app.delete(
+      "/donation-requests/:id",
+      verifyFBToken,
+      verifyCharity,
+      async (req, res) => {
+        const id = req.params.id;
+        try {
+          const request = await donationRequestsCollection.findOne({
+            _id: new ObjectId(id),
+          });
+
+          if (request.status !== "Pending") {
+            return res
+              .status(400)
+              .send({ message: "Only pending requests can be canceled" });
+          }
+
+          const result = await donationRequestsCollection.deleteOne({
+            _id: new ObjectId(id),
+          });
+          res.send(result);
+        } catch (error) {
+          res.status(500).send({ message: "Failed to delete request" });
+        }
+      }
+    );
+
+    app.get(
       "/donation-requests/:donationId",
       verifyFBToken,
       verifyCharity,
