@@ -653,6 +653,24 @@ async function run() {
   }
 });
 
+app.delete("/donation-requests/:id/admin", verifyFBToken, verifyAdmin, async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    const result = await donationRequestsCollection.deleteOne({
+      _id: new ObjectId(id),
+    });
+
+    if (result.deletedCount > 0) {
+      res.send({ success: true, message: "Donation request deleted by admin." });
+    } else {
+      res.status(404).send({ success: false, message: "Request not found." });
+    }
+  } catch (error) {
+    console.error("Error deleting donation request:", error);
+    res.status(500).send({ success: false, message: "Internal server error." });
+  }
+});
 
     app.get(
       "/donation-requests/:donationId",
