@@ -224,9 +224,12 @@ async function run() {
       let cursor = donationsCollection.find(query);
 
       // Apply sorting
-      if (sort === "quantity") {
+      if (sort === "quantityA") {
         cursor = cursor.sort({ quantity: 1 }); // ascending
-      } else if (sort === "pickupTime") {
+      } else if(sort === "quantityD"){
+        cursor = cursor.sort({ quantity: -1 });
+      }
+      else if (sort === "pickupTime") {
         cursor = cursor.sort({ "pickupWindow.start": 1 });
       }
 
@@ -283,6 +286,21 @@ async function run() {
         }
       }
     );
+
+    app.get("/categories", async(req, res) =>{
+      const donations = await donationsCollection
+        .find({}, { projection: { foodType: 1 } })
+        .toArray();
+
+      const categoriesSet = new Set();
+      donations.forEach((donation) => {
+        if (donation.foodType) {
+          categoriesSet.add(donation.foodType);
+        }
+      });
+
+      res.send([...categoriesSet]);
+    })
 
     app.patch("/donations/:id/feature", verifyFBToken, async (req, res) => {
       const { id } = req.params;
