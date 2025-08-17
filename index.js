@@ -4,7 +4,9 @@ const dotenv = require("dotenv");
 const admin = require("firebase-admin");
 dotenv.config();
 
-const decoded = Buffer.from(process.env.FB_SERVICE_KEY, 'base64').toString('utf8')
+const decoded = Buffer.from(process.env.FB_SERVICE_KEY, "base64").toString(
+  "utf8"
+);
 
 const serviceAccount = JSON.parse(decoded);
 
@@ -226,15 +228,32 @@ async function run() {
       // Apply sorting
       if (sort === "quantityA") {
         cursor = cursor.sort({ quantity: 1 }); // ascending
-      } else if(sort === "quantityD"){
+      } else if (sort === "quantityD") {
         cursor = cursor.sort({ quantity: -1 });
-      }
-      else if (sort === "pickupTime") {
+      } else if (sort === "pickupTime") {
         cursor = cursor.sort({ "pickupWindow.start": 1 });
       }
 
       const result = await cursor.toArray();
       res.send(result);
+    });
+
+    // GET recent donations
+    app.get("/donations/recent", async (req, res) => {
+      try {
+        const limit = parseInt(req.query.limit) || 8; 
+
+        const donations = await donationsCollection
+          .find()
+          .sort({ created_at: -1 }) 
+          .limit(limit)
+          .toArray();
+
+        res.send(donations);
+      } catch (error) {
+        console.error("Failed to fetch recent donations:", error);
+        res.status(500).send({ message: "Failed to fetch recent donations" });
+      }
     });
 
     app.get("/donations/featured", async (req, res) => {
@@ -287,7 +306,7 @@ async function run() {
       }
     );
 
-    app.get("/categories", async(req, res) =>{
+    app.get("/categories", async (req, res) => {
       const donations = await donationsCollection
         .find({}, { projection: { foodType: 1 } })
         .toArray();
@@ -300,7 +319,7 @@ async function run() {
       });
 
       res.send([...categoriesSet]);
-    })
+    });
 
     app.patch("/donations/:id/feature", verifyFBToken, async (req, res) => {
       const { id } = req.params;
@@ -648,47 +667,59 @@ async function run() {
     );
 
     app.delete("/donation-requests/:id", verifyFBToken, async (req, res) => {
-  const id = req.params.id;
-  try {
-    const request = await donationRequestsCollection.findOne({
-      _id: new ObjectId(id),
+      const id = req.params.id;
+      try {
+        const request = await donationRequestsCollection.findOne({
+          _id: new ObjectId(id),
+        });
+
+        if (request?.status !== "Pending") {
+          return res
+            .status(400)
+            .send({ message: "Only pending requests can be canceled" });
+        }
+
+        const result = await donationRequestsCollection.deleteOne({
+          _id: new ObjectId(id),
+        });
+
+        res.send(result);
+      } catch (error) {
+        console.error("Failed to delete request:", error);
+        res.status(500).send({ message: "Failed to delete request" });
+      }
     });
 
-    if (request?.status !== "Pending") {
-      return res
-        .status(400)
-        .send({ message: "Only pending requests can be canceled" });
-    }
+    app.delete(
+      "/donation-requests/:id/admin",
+      verifyFBToken,
+      verifyAdmin,
+      async (req, res) => {
+        const { id } = req.params;
 
-    const result = await donationRequestsCollection.deleteOne({
-      _id: new ObjectId(id),
-    });
+        try {
+          const result = await donationRequestsCollection.deleteOne({
+            _id: new ObjectId(id),
+          });
 
-    res.send(result);
-  } catch (error) {
-    console.error("Failed to delete request:", error);
-    res.status(500).send({ message: "Failed to delete request" });
-  }
-});
-
-app.delete("/donation-requests/:id/admin", verifyFBToken, verifyAdmin, async (req, res) => {
-  const { id } = req.params;
-
-  try {
-    const result = await donationRequestsCollection.deleteOne({
-      _id: new ObjectId(id),
-    });
-
-    if (result.deletedCount > 0) {
-      res.send({ success: true, message: "Donation request deleted by admin." });
-    } else {
-      res.status(404).send({ success: false, message: "Request not found." });
-    }
-  } catch (error) {
-    console.error("Error deleting donation request:", error);
-    res.status(500).send({ success: false, message: "Internal server error." });
-  }
-});
+          if (result.deletedCount > 0) {
+            res.send({
+              success: true,
+              message: "Donation request deleted by admin.",
+            });
+          } else {
+            res
+              .status(404)
+              .send({ success: false, message: "Request not found." });
+          }
+        } catch (error) {
+          console.error("Error deleting donation request:", error);
+          res
+            .status(500)
+            .send({ success: false, message: "Internal server error." });
+        }
+      }
+    );
 
     app.get(
       "/donation-requests/:donationId",
@@ -942,7 +973,6 @@ app.delete("/donation-requests/:id/admin", verifyFBToken, verifyAdmin, async (re
           .send({ error: "Failed to delete user", details: error });
       }
     });
-
 
     app.delete("/reviews/:id", verifyFBToken, async (req, res) => {
       const { id } = req.params;
